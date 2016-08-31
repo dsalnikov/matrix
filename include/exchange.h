@@ -49,10 +49,14 @@
 uint16_t crc16(uint8_t *data, uint16_t len);
 
 void exchange_init();
-void exchange_update_screen();
-void exchange_fill_screen(uint8_t c);
+void send_line(uint8_t n);
+void update_screen();
+void fill_screen(uint8_t c);
 
 static volatile uint8_t screen[SCREEN_SIZE];
-void exchange_handle_uart(uint8_t *data, uint16_t len);
+void handle_uart(uint8_t *data, uint16_t len);
+
+void reset_all_lines();
+void set_active_line(uint8_t n);
 
 #endif // __EXCHANGE_H__

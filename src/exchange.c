@@ -119,7 +119,8 @@ static void init_uart(uint32_t baud) {
 
 static void init_timer(uint32_t freq) {
 
-	//TODO: calculate prescaler here
+	//TODO: check calculation of prescaler here
+	uint8_t period = 24000000U / freq;
 
 	TIM_TimeBaseInitTypeDef tim;
 	TIM_OCInitTypeDef tim_oc;
@@ -128,7 +129,7 @@ static void init_timer(uint32_t freq) {
 
 	tim.TIM_ClockDivision = TIM_CKD_DIV1;
 	tim.TIM_CounterMode = TIM_CounterMode_Up;
-	tim.TIM_Period = 10;
+	tim.TIM_Period = period;
 	tim.TIM_Prescaler = 0;
 
 	TIM_TimeBaseInit(TIM1, &tim);
@@ -136,7 +137,8 @@ static void init_timer(uint32_t freq) {
 	tim_oc.TIM_OCMode = TIM_OCMode_PWM1;
 	tim_oc.TIM_OutputState = TIM_OutputState_Enable;
 	tim_oc.TIM_OCPolarity = TIM_OCPolarity_High;
-	tim_oc.TIM_Pulse = 1000;
+	tim_oc.TIM_Pulse = period >> 1;
+
 	TIM_OC1Init(TIM1, &tim_oc);
 	TIM_OC1PreloadConfig(TIM1, TIM_OCPreload_Enable);
 
@@ -164,7 +166,7 @@ uint16_t crc16(uint8_t *data, uint16_t len) {
 	return CRC->DR;
 }
 
-void exchange_handle_uart(uint8_t *data, uint16_t len) {
+void handle_uart(uint8_t *data, uint16_t len) {
 	if (crc16(data, len))
 		return;
 
@@ -186,21 +188,38 @@ void USART1_IRQHandler() {
 	}
 
 	if (USART_GetITStatus(USART1, USART_IT_RTO)) {
-		exchange_handle_uart(usart_buffer, usart_buffer_p);
+		handle_uart(usart_buffer, usart_buffer_p);
 		usart_buffer_p = 0;
 		USART_ClearITPendingBit(USART1, USART_IT_RTO);
 	}
 }
 
 void DMA1_Channel2_3_IRQHandler() {
+	static uint8_t line_num = 0;
+
 	//TODO: implement end of transfer it here
 	if (DMA_GetITStatus(DMA_IT_TC)) {
+
+		reset_all_lines();
 
 		EXCHANGE_LAT_B_HIGH;
 		EXCHANGE_LAT_B_LOW;
 
+		set_active_line(line_num++);
+
 		DMA_ClearITPendingBit(DMA_IT_TC);
 	}
+}
+
+void reset_all_lines() {
+	//disable all lines
+	GPIO_ResetBits(GPIOA, 0x00FF);
+}
+
+void set_active_line(uint8_t n) {
+	uint16_t pin_nums[] = {GPIO_Pin_0, GPIO_Pin_1, GPIO_Pin_2, GPIO_Pin_3, GPIO_Pin_7, GPIO_Pin_6, GPIO_Pin_5, GPIO_Pin_4};
+
+	GPIO_SetBits(GPIOA, pin_nums[n]);
 }
 
 void exchange_init() {
@@ -227,11 +246,36 @@ void exchange_init() {
 	EXCHANGE_LAT_B_LOW;
 }
 
-void exchange_update_screen() {
+void update_screen() {
 	DMA_Cmd(EXCHANGE_DMA_CHANNEL, ENABLE);
 }
 
-void exchange_fill_screen(uint8_t c) {
+void send_line(uint8_t n) {
+	DMA_InitTypeDef dma;
+
+	dma.DMA_BufferSize = 8*3;
+	dma.DMA_DIR = DMA_DIR_PeripheralDST;
+	dma.DMA_MemoryBaseAddr = (uint32_t)&screen[n*8*3];
+	dma.DMA_MemoryDataSize = DMA_MemoryDataSize_Byte;
+	dma.DMA_MemoryInc = DMA_MemoryInc_Enable;
+	dma.DMA_Mode = DMA_Mode_Normal;
+	dma.DMA_PeripheralBaseAddr = (uint32_t)&SPI1->DR;
+	dma.DMA_PeripheralDataSize = DMA_PeripheralDataSize_Byte;
+	dma.DMA_PeripheralInc = DMA_PeripheralInc_Disable;
+	dma.DMA_Priority = DMA_Priority_High;
+
+	DMA_Init(EXCHANGE_DMA_CHANNEL, &dma);
+
+	NVIC_EnableIRQ(DMA1_Channel2_3_IRQn);
+
+	DMA_ITConfig(EXCHANGE_DMA_CHANNEL, DMA_IT_TC, ENABLE);
+
+	SPI_I2S_DMACmd(SPI1, SPI_I2S_DMAReq_Tx, ENABLE);
+
+	DMA_Cmd(EXCHANGE_DMA_CHANNEL, ENABLE);
+}
+
+void fill_screen(uint8_t c) {
 	for (uint16_t i=0; i<SCREEN_SIZE; i++) {
 		screen[i] = c;
 	}
