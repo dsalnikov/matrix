@@ -94,6 +94,7 @@ main(int argc, char* argv[])
   // Infinite loop
   while (1)
     {
+	  //update_screen();
 
       timer_sleep(seconds == 0 ? TIMER_FREQUENCY_HZ : BLINK_ON_TICKS);
 

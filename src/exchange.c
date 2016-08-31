@@ -15,40 +15,40 @@
 static void init_pins() {
 	GPIO_InitTypeDef gpio;
 
-	RCC_AHBPeriphClockCmd(RCC_AHBPeriph_GPIOC, ENABLE);
+	RCC_AHBPeriphClockCmd(RCC_AHBPeriph_GPIOA, ENABLE);
+	RCC_AHBPeriphClockCmd(RCC_AHBPeriph_GPIOB, ENABLE);
 
 	/* init mosi pin */
-	gpio.GPIO_Pin = EXCHANGE_MOSI_PIN;
+	gpio.GPIO_Pin = MOSI_PIN | DCK_PIN;
 	gpio.GPIO_Mode = GPIO_Mode_AF;
 	gpio.GPIO_OType = GPIO_OType_PP;
 	gpio.GPIO_PuPd = GPIO_PuPd_UP;
 	gpio.GPIO_Speed = GPIO_Speed_Level_3;
 
-	GPIO_Init(GPIOC, &gpio);
+	GPIO_Init(GPIOB, &gpio);
+	GPIO_PinAFConfig(GPIOB, MOSI_PIN_SOURCE, GPIO_AF_0);
+	GPIO_PinAFConfig(GPIOB, DCK_PIN_SOURCE, GPIO_AF_0);
 
 	/* init cs, en pin */
-	gpio.GPIO_Pin = EXCHANGE_LAT_B_PIN | EXCHANGE_EN_PIN | EXCHANGE_SELBK_PIN | EXCHANGE_RSTB_PIN;
+	gpio.GPIO_Pin = LAT_B_PIN | SELBK_PIN | RSTB_PIN;
 	gpio.GPIO_Mode = GPIO_Mode_OUT;
 
-	GPIO_Init(GPIOC, &gpio);
-
-	GPIO_PinAFConfig(GPIOC, EXCHANGE_MOSI_PIN_SOURCE, GPIO_AF_0);
-
+	GPIO_Init(GPIOB, &gpio);
 
 	/* init uart pins */
-	gpio.GPIO_Pin = EXCHANGE_RX_PIN | EXCHANGE_TX_PIN;
+	gpio.GPIO_Pin = RX_PIN | TX_PIN;
 	gpio.GPIO_Mode = GPIO_Mode_AF;
-	GPIO_Init(GPIOC, &gpio);
+	GPIO_Init(GPIOA, &gpio);
 
-	GPIO_PinAFConfig(GPIOC, EXCHANGE_RX_PIN_SOURCE, GPIO_AF_1);
-	GPIO_PinAFConfig(GPIOC, EXCHANGE_TX_PIN_SOURCE, GPIO_AF_1);
+	GPIO_PinAFConfig(GPIOC, RX_PIN_SOURCE, GPIO_AF_1);
+	GPIO_PinAFConfig(GPIOC, TX_PIN_SOURCE, GPIO_AF_1);
 
 	/* init pwm timer pin */
-	gpio.GPIO_Pin = EXCHANGE_PWM_PIN;
+	gpio.GPIO_Pin = PWM_PIN;
 	gpio.GPIO_OType = GPIO_Mode_AF;
-	GPIO_Init(GPIOC, &gpio);
+	GPIO_Init(GPIOB, &gpio);
 
-	GPIO_PinAFConfig(GPIOC, EXCHANGE_PWM_PIN_SOURCE, GPIO_AF_0);
+	GPIO_PinAFConfig(GPIOB, PWM_PIN_SOURCE, GPIO_AF_0);
 
 }
 
@@ -82,11 +82,11 @@ static void init_spi() {
 	dma.DMA_PeripheralInc = DMA_PeripheralInc_Disable;
 	dma.DMA_Priority = DMA_Priority_High;
 
-	DMA_Init(EXCHANGE_DMA_CHANNEL, &dma);
+	DMA_Init(DMA_CHANNEL, &dma);
 
 	NVIC_EnableIRQ(DMA1_Channel2_3_IRQn);
 
-	DMA_ITConfig(EXCHANGE_DMA_CHANNEL, DMA_IT_TC, ENABLE);
+	DMA_ITConfig(DMA_CHANNEL, DMA_IT_TC, ENABLE);
 
 	SPI_I2S_DMACmd(SPI1, SPI_I2S_DMAReq_Tx, ENABLE);
 }
@@ -150,7 +150,7 @@ static void init_crc() {
 
 	CRC_PolynomialSizeSelect(CRC_PolSize_16);
 	CRC->INIT = 0;
-	CRC->POL = EXCHANGE_CRC_POLYNOMIAL;
+	CRC->POL = CRC_POLYNOMIAL;
 }
 
 static uint8_t usart_buffer[512];
@@ -202,10 +202,14 @@ void DMA1_Channel2_3_IRQHandler() {
 
 		reset_all_lines();
 
-		EXCHANGE_LAT_B_HIGH;
-		EXCHANGE_LAT_B_LOW;
+		LAT_B_HIGH;
+		LAT_B_LOW;
 
 		set_active_line(line_num++);
+
+		//request next line update
+		if (line_num < 8)
+			send_line(line_num);
 
 		DMA_ClearITPendingBit(DMA_IT_TC);
 	}
@@ -240,14 +244,14 @@ void exchange_init() {
 
 	printf("Setting pins to default state ...\n");
 
-	EXCHANGE_RSTB_HIGH;
-	EXCHANGE_SELBK_HIGH;
-	EXCHANGE_EN_LOW;
-	EXCHANGE_LAT_B_LOW;
+	RSTB_HIGH;
+	SELBK_HIGH;
+	LAT_B_LOW;
 }
 
 void update_screen() {
-	DMA_Cmd(EXCHANGE_DMA_CHANNEL, ENABLE);
+	SELBK_HIGH;
+	send_line(0);
 }
 
 void send_line(uint8_t n) {
@@ -264,15 +268,15 @@ void send_line(uint8_t n) {
 	dma.DMA_PeripheralInc = DMA_PeripheralInc_Disable;
 	dma.DMA_Priority = DMA_Priority_High;
 
-	DMA_Init(EXCHANGE_DMA_CHANNEL, &dma);
+	DMA_Init(DMA_CHANNEL, &dma);
 
 	NVIC_EnableIRQ(DMA1_Channel2_3_IRQn);
 
-	DMA_ITConfig(EXCHANGE_DMA_CHANNEL, DMA_IT_TC, ENABLE);
+	DMA_ITConfig(DMA_CHANNEL, DMA_IT_TC, ENABLE);
 
 	SPI_I2S_DMACmd(SPI1, SPI_I2S_DMAReq_Tx, ENABLE);
 
-	DMA_Cmd(EXCHANGE_DMA_CHANNEL, ENABLE);
+	DMA_Cmd(DMA_CHANNEL, ENABLE);
 }
 
 void fill_screen(uint8_t c) {
