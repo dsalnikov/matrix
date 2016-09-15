@@ -35,6 +35,13 @@ static void init_pins() {
 
 	GPIO_Init(GPIOB, &gpio);
 
+	/* init row select ping */
+	gpio.GPIO_Pin = GPIO_Pin_0 | GPIO_Pin_1 | GPIO_Pin_2 | GPIO_Pin_3 |
+			GPIO_Pin_7 | GPIO_Pin_6 | GPIO_Pin_5 | GPIO_Pin_4;
+	gpio.GPIO_Mode = GPIO_Mode_OUT;
+
+	GPIO_Init(GPIOA, &gpio);
+
 	/* init uart pins */
 	gpio.GPIO_Pin = RX_PIN | TX_PIN;
 	gpio.GPIO_Mode = GPIO_Mode_AF;
@@ -45,10 +52,12 @@ static void init_pins() {
 
 	/* init pwm timer pin */
 	gpio.GPIO_Pin = PWM_PIN;
-	gpio.GPIO_OType = GPIO_Mode_AF;
+	gpio.GPIO_Mode = GPIO_Mode_AF;
+	gpio.GPIO_OType = GPIO_OType_PP;
+	gpio.GPIO_PuPd = GPIO_PuPd_UP;
 	GPIO_Init(GPIOB, &gpio);
 
-	GPIO_PinAFConfig(GPIOB, PWM_PIN_SOURCE, GPIO_AF_0);
+	GPIO_PinAFConfig(GPIOB, PWM_PIN_SOURCE, GPIO_AF_2);
 
 }
 
@@ -56,24 +65,25 @@ static void init_spi() {
 	SPI_InitTypeDef spi;
 	DMA_InitTypeDef dma;
 
-	RCC_APB1PeriphClockCmd(RCC_APB2Periph_SPI1, ENABLE);
+	RCC_APB2PeriphClockCmd(RCC_APB2Periph_SPI1, ENABLE);
 
-	spi.SPI_BaudRatePrescaler = SPI_BaudRatePrescaler_2;
+	spi.SPI_BaudRatePrescaler = SPI_BaudRatePrescaler_32;
 	spi.SPI_CPOL = SPI_CPOL_Low;
 	spi.SPI_CPHA = SPI_CPHA_1Edge;
 	spi.SPI_DataSize = SPI_DataSize_8b;
-	spi.SPI_Direction = SPI_Direction_Tx;
+	spi.SPI_Direction = SPI_Direction_1Line_Tx;
 	spi.SPI_FirstBit = SPI_FirstBit_MSB;
 	spi.SPI_Mode = SPI_Mode_Master;
 	spi.SPI_NSS = SPI_NSS_Soft;
+	spi.SPI_CRCPolynomial = 1;
 
 	SPI_Init(SPI1, &spi);
 	SPI_Cmd(SPI1, ENABLE);
 
 	RCC_AHBPeriphClockCmd(RCC_AHBPeriph_DMA1, ENABLE);
-	dma.DMA_BufferSize = SCREEN_SIZE;
+	dma.DMA_BufferSize = 3*8;
 	dma.DMA_DIR = DMA_DIR_PeripheralDST;
-	dma.DMA_MemoryBaseAddr = (uint32_t)&screen;
+	dma.DMA_MemoryBaseAddr = (uint32_t)screen;
 	dma.DMA_MemoryDataSize = DMA_MemoryDataSize_Byte;
 	dma.DMA_MemoryInc = DMA_MemoryInc_Enable;
 	dma.DMA_Mode = DMA_Mode_Normal;
@@ -81,6 +91,7 @@ static void init_spi() {
 	dma.DMA_PeripheralDataSize = DMA_PeripheralDataSize_Byte;
 	dma.DMA_PeripheralInc = DMA_PeripheralInc_Disable;
 	dma.DMA_Priority = DMA_Priority_High;
+	dma.DMA_M2M = DMA_M2M_Disable;
 
 	DMA_Init(DMA_CHANNEL, &dma);
 
@@ -118,9 +129,9 @@ static void init_uart(uint32_t baud) {
 }
 
 static void init_timer(uint32_t freq) {
+	uint32_t period = 48000000U / freq;
 
-	//TODO: check calculation of prescaler here
-	uint8_t period = 24000000U / freq;
+	assert_param(period >= 2);
 
 	TIM_TimeBaseInitTypeDef tim;
 	TIM_OCInitTypeDef tim_oc;
@@ -129,18 +140,25 @@ static void init_timer(uint32_t freq) {
 
 	tim.TIM_ClockDivision = TIM_CKD_DIV1;
 	tim.TIM_CounterMode = TIM_CounterMode_Up;
-	tim.TIM_Period = period;
+	tim.TIM_Period = period-1;
 	tim.TIM_Prescaler = 0;
 
 	TIM_TimeBaseInit(TIM1, &tim);
 
+	TIM_OCStructInit(&tim_oc);
+
 	tim_oc.TIM_OCMode = TIM_OCMode_PWM1;
 	tim_oc.TIM_OutputState = TIM_OutputState_Enable;
+	tim_oc.TIM_OutputNState = TIM_OutputNState_Enable;
 	tim_oc.TIM_OCPolarity = TIM_OCPolarity_High;
 	tim_oc.TIM_Pulse = period >> 1;
 
-	TIM_OC1Init(TIM1, &tim_oc);
-	TIM_OC1PreloadConfig(TIM1, TIM_OCPreload_Enable);
+	TIM_OC2Init(TIM1, &tim_oc);
+	TIM_OC2PreloadConfig(TIM1, TIM_OCPreload_Enable);
+
+	TIM_ARRPreloadConfig(TIM1,ENABLE);
+
+	TIM_CtrlPWMOutputs(TIM1, ENABLE);
 
 	TIM_Cmd(TIM1, ENABLE);
 }
@@ -197,21 +215,26 @@ void USART1_IRQHandler() {
 void DMA1_Channel2_3_IRQHandler() {
 	static uint8_t line_num = 0;
 
-	//TODO: implement end of transfer it here
-	if (DMA_GetITStatus(DMA_IT_TC)) {
+	if (DMA_GetITStatus(DMA1_IT_GL3)) {
+
+		printf("dma isr: %x\n", DMA1->ISR);
 
 		reset_all_lines();
 
-		LAT_B_HIGH;
 		LAT_B_LOW;
+		LAT_B_HIGH;
 
 		set_active_line(line_num++);
 
+		DMA_ClearFlag(DMA1_FLAG_TC3);
+		DMA_ClearITPendingBit(DMA1_IT_TC3);
+
+		//printf("dma isr: %x\n", DMA1->ISR);
 		//request next line update
 		if (line_num < 8)
 			send_line(line_num);
 
-		DMA_ClearITPendingBit(DMA_IT_TC);
+
 	}
 }
 
@@ -227,26 +250,28 @@ void set_active_line(uint8_t n) {
 }
 
 void exchange_init() {
+	fill_screen(128);
+
 	printf("Initialising pins ...\n");
 	init_pins();
 
 	printf("Initialising SPI ...\n");
 	init_spi();
 
-	printf("Initialising USART ...\n");
-	init_uart(115200);
+	//printf("Initialising USART ...\n");
+	//init_uart(115200);
 
 	printf("Initialising PWM timer ...\n");
-	init_timer(24000000);
+	init_timer(12000000);
 
-	printf("Initialising CRC unit ...\n");
-	init_crc();
+	//printf("Initialising CRC unit ...\n");
+	//init_crc();
 
 	printf("Setting pins to default state ...\n");
 
-	RSTB_HIGH;
+	RSTB_LOW;
 	SELBK_HIGH;
-	LAT_B_LOW;
+	LAT_B_HIGH;
 }
 
 void update_screen() {
@@ -256,6 +281,12 @@ void update_screen() {
 
 void send_line(uint8_t n) {
 	DMA_InitTypeDef dma;
+
+	printf("drawing line %d\n", n);
+
+	DMA_ClearFlag(DMA1_FLAG_GL3);
+
+	DMA_DeInit(DMA_CHANNEL);
 
 	dma.DMA_BufferSize = 8*3;
 	dma.DMA_DIR = DMA_DIR_PeripheralDST;
@@ -267,6 +298,7 @@ void send_line(uint8_t n) {
 	dma.DMA_PeripheralDataSize = DMA_PeripheralDataSize_Byte;
 	dma.DMA_PeripheralInc = DMA_PeripheralInc_Disable;
 	dma.DMA_Priority = DMA_Priority_High;
+	dma.DMA_M2M = DMA_M2M_Disable;
 
 	DMA_Init(DMA_CHANNEL, &dma);
 

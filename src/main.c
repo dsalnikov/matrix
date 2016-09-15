@@ -71,17 +71,17 @@ main(int argc, char* argv[])
   // trace_dump_args(argc, argv);
 
   // Send a greeting to the trace device (skipped on Release).
-  trace_puts("Hello ARM World!");
+  //trace_puts("Hello ARM World!");
 
   // The standard output and the standard error should be forwarded to
   // the trace device. For this to work, a redirection in _write.c is
   // required.
-  puts("Standard output message.");
-  fprintf(stderr, "Standard error message.\n");
+  //puts("Standard output message.");
+  //fprintf(stderr, "Standard error message.\n");
 
   // At this stage the system clock should have already been configured
   // at high speed.
-  trace_printf("System clock: %u Hz\n", SystemCoreClock);
+  //trace_printf("System clock: %u Hz\n", SystemCoreClock);
 
   timer_start();
 
@@ -90,7 +90,7 @@ main(int argc, char* argv[])
   uint32_t seconds = 0;
 
   exchange_init();
-
+  send_line(0);
   // Infinite loop
   while (1)
     {
@@ -104,7 +104,8 @@ main(int argc, char* argv[])
       ++seconds;
 
       // Count seconds on the trace device.
-      trace_printf("Second %u\n", seconds);
+      trace_printf("counter %u\n", TIM1->CNT);
+
     }
   // Infinite loop, never return.
 }
