@@ -90,22 +90,13 @@ main(int argc, char* argv[])
   uint32_t seconds = 0;
 
   exchange_init();
-  send_line(0);
+
   // Infinite loop
   while (1)
     {
-	  //update_screen();
+	  send_line(0);
 
-      timer_sleep(seconds == 0 ? TIMER_FREQUENCY_HZ : BLINK_ON_TICKS);
-
-      blink_led_off();
       timer_sleep(BLINK_OFF_TICKS);
-
-      ++seconds;
-
-      // Count seconds on the trace device.
-      trace_printf("counter %u\n", TIM1->CNT);
-
     }
   // Infinite loop, never return.
 }

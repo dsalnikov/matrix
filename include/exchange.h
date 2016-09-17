@@ -48,7 +48,7 @@ uint16_t crc16(uint8_t *data, uint16_t len);
 void exchange_init();
 void send_line(uint8_t n);
 void update_screen();
-void fill_screen(uint8_t c);
+void fill_screen(uint8_t c, uint8_t stribe);
 
 static volatile uint8_t screen[SCREEN_SIZE];
 void handle_uart(uint8_t *data, uint16_t len);

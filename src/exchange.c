@@ -67,7 +67,7 @@ static void init_spi() {
 
 	RCC_APB2PeriphClockCmd(RCC_APB2Periph_SPI1, ENABLE);
 
-	spi.SPI_BaudRatePrescaler = SPI_BaudRatePrescaler_32;
+	spi.SPI_BaudRatePrescaler = SPI_BaudRatePrescaler_256;
 	spi.SPI_CPOL = SPI_CPOL_Low;
 	spi.SPI_CPHA = SPI_CPHA_1Edge;
 	spi.SPI_DataSize = SPI_DataSize_8b;
@@ -221,18 +221,23 @@ void DMA1_Channel2_3_IRQHandler() {
 
 		reset_all_lines();
 
-		LAT_B_LOW;
 		LAT_B_HIGH;
+		LAT_B_LOW;
+
 
 		set_active_line(line_num++);
+
+		SELBK_HIGH;
 
 		DMA_ClearFlag(DMA1_FLAG_TC3);
 		DMA_ClearITPendingBit(DMA1_IT_TC3);
 
 		//printf("dma isr: %x\n", DMA1->ISR);
 		//request next line update
-		if (line_num < 8)
-			send_line(line_num);
+		if (line_num == 7)
+			line_num = 0;
+
+		send_line(line_num);
 
 
 	}
@@ -250,7 +255,7 @@ void set_active_line(uint8_t n) {
 }
 
 void exchange_init() {
-	fill_screen(128);
+	fill_screen(128, 1);
 
 	printf("Initialising pins ...\n");
 	init_pins();
@@ -262,15 +267,15 @@ void exchange_init() {
 	//init_uart(115200);
 
 	printf("Initialising PWM timer ...\n");
-	init_timer(12000000);
+	init_timer(12000);
 
 	//printf("Initialising CRC unit ...\n");
 	//init_crc();
 
 	printf("Setting pins to default state ...\n");
 
-	RSTB_LOW;
-	SELBK_HIGH;
+	RSTB_HIGH;
+	SELBK_LOW;
 	LAT_B_HIGH;
 }
 
@@ -279,7 +284,34 @@ void update_screen() {
 	send_line(0);
 }
 
+void spi_send(uint16_t data) {
+	SPI_SendData8(SPI1, data);
+	while(SPI_I2S_GetFlagStatus(SPI1, SPI_I2S_FLAG_TXE)==RESET);
+}
+
+
 void send_line(uint8_t n) {
+#if 1
+	SELBK_LOW;
+
+	for (uint16_t i=0; i<18; i++) {
+		spi_send(screen[i]);
+	}
+	while(SPI_I2S_GetFlagStatus(SPI1, SPI_I2S_FLAG_BSY)==SET);
+
+	SELBK_HIGH;
+
+	for (uint16_t i=0; i<24; i++) {
+		spi_send(screen[i]);
+	}
+	while(SPI_I2S_GetFlagStatus(SPI1, SPI_I2S_FLAG_BSY)==SET);
+	LAT_B_HIGH;
+	for(uint8_t i=0;i<255;i++);
+	LAT_B_LOW;
+
+	SELBK_HIGH;
+
+#else
 	DMA_InitTypeDef dma;
 
 	printf("drawing line %d\n", n);
@@ -309,10 +341,11 @@ void send_line(uint8_t n) {
 	SPI_I2S_DMACmd(SPI1, SPI_I2S_DMAReq_Tx, ENABLE);
 
 	DMA_Cmd(DMA_CHANNEL, ENABLE);
+#endif
 }
 
-void fill_screen(uint8_t c) {
-	for (uint16_t i=0; i<SCREEN_SIZE; i++) {
+void fill_screen(uint8_t c, uint8_t stribe){
+	for (uint16_t i=0; i<SCREEN_SIZE; i+=stribe) {
 		screen[i] = c;
 	}
 }
