@@ -12,6 +12,9 @@
 
 #include <stdio.h>
 
+uint8_t gamma[18*2];
+
+
 static void init_pins() {
 	GPIO_InitTypeDef gpio;
 
@@ -256,6 +259,7 @@ void set_active_line(uint8_t n) {
 
 void exchange_init() {
 	fill_screen(128, 1);
+	memset(gamma, 0, 18*2);
 
 	printf("Initialising pins ...\n");
 	init_pins();
@@ -267,7 +271,7 @@ void exchange_init() {
 	//init_uart(115200);
 
 	printf("Initialising PWM timer ...\n");
-	init_timer(12000);
+	init_timer(12000000);
 
 	//printf("Initialising CRC unit ...\n");
 	//init_crc();
@@ -290,18 +294,12 @@ void spi_send(uint16_t data) {
 }
 
 
+
 void send_line(uint8_t n) {
 #if 1
-	SELBK_LOW;
 
-	for (uint16_t i=0; i<18; i++) {
-		spi_send(screen[i]);
-	}
-	while(SPI_I2S_GetFlagStatus(SPI1, SPI_I2S_FLAG_BSY)==SET);
 
-	SELBK_HIGH;
-
-	for (uint16_t i=0; i<24; i++) {
+	for (uint16_t i=0; i<24*2; i++) {
 		spi_send(screen[i]);
 	}
 	while(SPI_I2S_GetFlagStatus(SPI1, SPI_I2S_FLAG_BSY)==SET);

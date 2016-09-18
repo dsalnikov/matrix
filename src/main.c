@@ -92,11 +92,35 @@ main(int argc, char* argv[])
   exchange_init();
 
   // Infinite loop
+  uint8_t c = 0;
+  uint8_t line_num = 0;
+  reset_all_lines();
+  set_active_line(0);
+  SELBK_LOW;
+
+  	for (uint16_t i=0; i<18*2; i++) {
+  		spi_send(0xFF);
+  	}
+  	while(SPI_I2S_GetFlagStatus(SPI1, SPI_I2S_FLAG_BSY)==SET);
+
+  	SELBK_HIGH;
+  	int8_t inc = 1;
   while (1)
     {
-	  send_line(0);
+	  //printf("%d \n", c);
+	  c = c + inc;
+	  if (c == 255)
+		  inc = -inc;
+	  if (c == 0)
+		  inc = -inc;
+	  fill_screen(c, 1);
+	  send_line(line_num);
 
-      timer_sleep(BLINK_OFF_TICKS);
+	  /* reset_all_lines();
+	   * set_active_line(line_num++);
+	   * */
+
+      //timer_sleep(BLINK_OFF_TICKS);
     }
   // Infinite loop, never return.
 }
